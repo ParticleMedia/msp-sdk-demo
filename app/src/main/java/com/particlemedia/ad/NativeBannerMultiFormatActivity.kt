@@ -42,7 +42,7 @@ class NativeBannerMultiFormatActivity : ComponentActivity() {
                 Logger.info("Ad dismissed. info: ${ad.adInfo}")
             }
 
-            override fun onAdLoaded(placementId: String) {
+            override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
                 Logger.info("Ad load event received. placementId: $placementId. Fetching ads from cache...")
                 val ad:MSPAd? = AdLoader().getAd(placementId)
                 if (ad == null) {
@@ -77,7 +77,7 @@ class NativeBannerMultiFormatActivity : ComponentActivity() {
                 }
             }
 
-            override fun onError(msg: String) {
+            override fun onError(msg: String, loadInfo: Map<String, Any>) {
                 Logger.info("MainActivity. Ads loading error: $msg")
             }
         }
