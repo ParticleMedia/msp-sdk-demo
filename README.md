@@ -21,6 +21,18 @@ Please refer to demo app gradle file for the latest msp sdk version: [build.grad
 4. Fetch the loaded Ad from cache using `AdLoader().getAd` API   
 Please checkout the demo app for [sample code](https://github.com/ParticleMedia/msp-sdk-demo/blob/main/app/src/main/java/com/particlemedia/ad/MainActivity.kt)
 
+### notifyLoss API
+Call `MSP.notifyLoss` API when: 
+1. MSP Ad loses the auction, or
+2. MSP SDK does not fill while other bidder wins
+
+`fun notifyLoss(winnerBidder: String, winnerPrice: Float, requestId: String, ad: MSPAd?)`
+
+- `winnerBidder`: name of the winning bidder other than MSP
+- `winnderPrice`: Ad price of the winning bid other than MSP
+- `requestId`: Provided by `onAdLoaded` and `onError` callback parameter `loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID]`
+- `ad`: MSP Ad that loses the auction.(pass `null` for the No fill case)
+
 ### About AdRequest.Builder.setAdaptiveBannerSize
 This is to support Google Adaptive [Banner Ads](https://developers.google.com/ad-manager/mobile-ads-sdk/android/banner)
 
