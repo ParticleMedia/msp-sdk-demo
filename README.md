@@ -1,154 +1,159 @@
-# MSP SDK — iOS Integration Guide
+# MSP SDK — Android Integration Guide
 
 ## Overview
 
-This guide covers how to add the MSP iOS SDK to your app, including how to initialize SDK, load Ad and display ads. 
+This guide covers how to add the MSP Android SDK to your app, including how to initialize the SDK, load ads, and display ads.
 
-The guide also provides some best pratices which helps you avoid common pitfalls and achieve best performance.
+The guide also provides some best practices which help you avoid common pitfalls and achieve best performance.
 
 **System requirements**
 
 | Requirement | Version |
 |---|---|
-| iOS deployment target | 15.0+ |
-| Xcode | 15.0+ |
-| Swift | 5.0+ |
-| CocoaPods | 1.12+ |
+| Android minimum SDK | 24 (Android 7.0) |
+| Android target SDK | 36 |
+| Kotlin | 1.9+ |
+| Gradle | 7.0+ |
 
 ---
 
 ## Installation
 
-The MSP SDK is distributed via CocoaPods. Add the core pod and any adapter pods for the ad networks you want to monetize with.
+The MSP SDK is distributed via Maven Central. Add the core dependency and any adapter dependencies for the ad networks you want to monetize with.
 
-**Podfile**
+**settings.gradle**
 
-```ruby
-platform :ios, '15.0'
+Ensure Maven Central is listed in your repository configuration:
 
-target 'YourApp' do
-  use_frameworks!
-
-  # Core SDK (required)
-  pod 'MSPiOSCore'
-
-  # Ad network adapters (add only those you need)
-  pod 'MSPGoogleAdapter'
-  pod 'MSPFacebookAdapter'
-  pod 'MSPNovaAdapter'
-  pod 'MSPMolocoAdapter'
-end
+```gradle
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 ```
 
-Run the install command:
+**build.gradle (app module)**
 
-```bash
-pod install
+```gradle
+dependencies {
+    // Core SDK (required)
+    implementation 'ai.themsp:prebid-adapter:$LATEST_VERSION'
+    implementation 'ai.themsp:msp-core:$LATEST_VERSION'
+
+    // Ad network adapters (add only those you need)
+    implementation 'ai.themsp:google-adapter:$LATEST_VERSION'
+    implementation 'ai.themsp:facebook-adapter:$LATEST_VERSION'
+    implementation 'ai.themsp:nova-adapter:$LATEST_VERSION'
+    implementation 'ai.themsp:moloco-adapter:$LATEST_VERSION'
+}
 ```
-
-Open the generated `.xcworkspace` file — do not use the `.xcodeproj` directly.
 
 ---
 
-## Info.plist Configuration
+## AndroidManifest.xml Configuration
 
-### App Tracking Transparency (iOS 14+)
-
-Add the usage description key. The system displays this string in the ATT permission prompt:
+Add the required permissions to your `AndroidManifest.xml`:
 
 ```xml
-<key>NSUserTrackingUsageDescription</key>
-<string>This identifier will be used to deliver personalized ads to you.</string>
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+<!-- Required for ad personalization -->
+<uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 ```
 
-Network-specific `Info.plist` entries (GAD identifier, SKAdNetwork IDs) are covered per-network in the [Mediation Networks Guide](#mediation-networks-guide).
+Network-specific manifest entries (Google App ID, etc.) are covered per-network in the [Mediation Networks Guide](#mediation-networks-guide).
 
 ---
 
 ## Initialize the SDK
 
-Initialize the MSP SDK as early as possible — ideally in `application(_:didFinishLaunchingWithOptions:)`. The SDK uses the initialization window to prefetch ad configurations and warm up adapter networks.
+Initialize the MSP SDK as early as possible — ideally in your `Application.onCreate()`. The SDK uses the initialization window to prefetch ad configurations and warm up adapter networks.
 
-**AppDelegate.swift**
+**MyApplication.kt**
 
-```swift
-import AppTrackingTransparency
-import MSPCore
-import MSPiOSCore
+```kotlin
+import com.particles.msp.api.MSPInitListener
+import com.particles.msp.api.MSPInitStatus
+import com.particles.msp.api.MSPInitializationParameters
+import com.particles.msp.util.Logger
+import com.particles.prebidadapter.MSP
 
-// Import adapter modules — see Mediation Networks Guide for each network's import name
+class MyApplication : Application() {
 
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-
-    // Declare adapter managers for the networks you want to activate
-    private let adNetworkManagers: [AdNetworkManager] = [
-        GoogleManager(),
-        FacebookManager(),
-        NovaManager(),
-        MolocoManager(),
-    ]
-
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool {
+    override fun onCreate() {
+        super.onCreate()
         initializeMSP()
-
-        // Request ATT permission after a brief delay so your UI is visible
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if #available(iOS 14, *) {
-                ATTrackingManager.requestTrackingAuthorization { _ in }
-            }
-        }
-
-        return true
     }
 
-    private func initializeMSP() {
+    private fun initializeMSP() {
+        // Optional: enable verbose logging during development
+        Logger.setLogLevel(Logger.VERBOSE)
+
         // Optional: pass a publisher-provided user identifier for frequency capping
-        MSP.shared.ppid = "your-user-id"
+        MSP.setPpid("your-user-id")
 
         // Build initialization parameters
-        let initParams = InitializationParametersImp(
-            prebidAPIKey: "YOUR_PREBID_API_KEY",
-            sourceApp: "YOUR_SOURCE_APP",
-            orgId: 12345,   // Your org ID from the MSP dashboard
-            appId: 67890    // Your app ID from the MSP dashboard
-        )
+        val initParams = object : MSPInitializationParameters {
+            override fun getPrebidAPIKey(): String = "YOUR_PREBID_API_KEY"
+            override fun getOrgId(): Int = 12345       // Your org ID from the MSP dashboard
+            override fun getAppId(): Int = 67890       // Your app ID from the MSP dashboard
+
+            // Privacy and consent flags — set values appropriate for your app
+            override fun hasUserConsent(): Boolean = true
+            override fun isAgeRestrictedUser(): Boolean = false
+            override fun isDoNotSell(): Boolean = false
+            override fun getConsentString(): String = ""
+            override fun isInTestMode(): Boolean = false
+
+            // Additional network-specific init parameters
+            override fun getParameters(): Map<String, Any> = mapOf(
+                 MSPConstants.INIT_PARAM_KEY_GOOGLE_APP_ID to "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
+                 MSPConstants.INIT_PARAM_KEY_MOLOCO_APP_KEY to "xxxxx-v9C8uNYV5riG7Vwu"
+            )
+        }
 
         // Initialize
-        MSP.shared.initMSP(
-            initParams: initParams,
-            sdkInitListener: self,          // optional — set to nil if not needed
-            adNetworkManagers: adNetworkManagers
+        MSP.init(
+            context = applicationContext,
+            initParams = initParams,
+            sdkInitListener = object : MSPInitListener {
+                override fun onComplete(status: MSPInitStatus, message: String) {
+                    Logger.info("[MSP] Initialization complete. Status: $status, message: $message")
+                }
+            }
         )
     }
 }
+```
 
-// MARK: - MSPInitListener (optional)
-extension AppDelegate: MSPInitListener {
-    func onComplete(status: MSPInitStatus, message: String) {
-        print("[MSP] Initialization complete. Status: \(status), message: \(message)")
-    }
-}
+Register your Application class in `AndroidManifest.xml`:
+
+```xml
+<application
+    android:name=".MyApplication"
+    ...>
 ```
 
 **Key initialization parameters**
 
 | Parameter | Type | Description |
 |---|---|---|
-| `prebidAPIKey` | `String` | API key issued by Particle inc. for your app |
-| `sourceApp` | `String` | App bundle identifier or source tag |
-| `orgId` | `Int64` | Organization ID provisioned from Particle inc. |
-| `appId` | `Int64` | App ID provisioned from Particle inc. |
+| `getPrebidAPIKey()` | `String` | API key issued by Particle Inc. for your app |
+| `getOrgId()` | `Int` | Organization ID provisioned from Particle Inc. |
+| `getAppId()` | `Int` | App ID provisioned from Particle Inc. |
+| `hasUserConsent()` | `Boolean` | Whether the user has given consent for personalized ads |
+| `isDoNotSell()` | `Boolean` | Whether the user has opted out of the sale of personal data (CCPA) |
+| `getConsentString()` | `String` | IAB TCF consent string |
+| `getParameters()` | `Map<String, Any>` | Additional network-specific initialization parameters |
 
-**Optional MSP.shared properties**
+**Optional MSP properties**
 
-| Property | Default | Description |
-|---|---|---|
-| `ppid` | `nil` | Publisher-provided user ID |
+| Method | Description |
+|---|---|
+| `MSP.setPpid(ppid)` | Publisher-provided user ID for frequency capping |
 
 ---
 
@@ -156,112 +161,109 @@ extension AppDelegate: MSPInitListener {
 
 The pattern for every ad format is the same:
 
-1. Create an `MSPAdLoader` and an `AdRequest`.
-2. Call `loadAd(placementId:adListener:adRequest:)`.
-3. In `onAdLoaded`, call `loader.getAd(placementId:)` to retrieve the ad object.
-4. Present the Ad(for interstitial Ad) or attach the ad to the App view hierarchy.
+1. Create an `AdLoader` and an `AdRequest`.
+2. Call `loader.loadAd(placementId, adListener, adRequest)`.
+3. In `onAdLoaded`, call `loader.getAd(placementId)` to retrieve the ad object.
+4. Present the ad (for interstitial/rewarded) or attach the ad view to your layout.
 
 ---
 
 ## Call NotifyLoss API
-Call `MSP.shared.notifyLoss` API when: 
-1. MSP Ad loses the auction, or
-2. MSP SDK does not fill while other bidder wins
 
-`public func notifyLoss(winnerBidderName: String, winnerPrice: Float, ad: MSPAd?, requestId: String?)`
+Call `MSP.notifyLoss` when:
+1. The MSP Ad loses the auction, or
+2. The MSP SDK does not fill while another bidder wins
 
-- `winnerBidderName`: name of the winning bidder other than MSP
-- `winnderPrice`: Ad price of the winning bid other than MSP
-- `ad`: MSP Ad that loses the auction.(pass `nil` for the No fill case)
-- `requestId`: Provided by `onSuccess` and `onError` callback parameter `loadInfo["request_id"]`
+`fun notifyLoss(winnerBidder: String, winnerPrice: Float, requestId: String, ad: MSPAd?)`
 
-```swift
-extension YourViewController: AdListener {
+- `winnerBidder`: Name of the winning bidder other than MSP
+- `winnerPrice`: Ad price of the winning bid other than MSP
+- `requestId`: Provided by `onAdLoaded` and `onError` callback parameter `loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID]`
+- `ad`: MSP Ad that loses the auction. Pass `null` for the no-fill case.
+
+```kotlin
+class YourActivity : AppCompatActivity(), AdListener {
 
     // Case 1: MSP ad was loaded but lost the in-app auction to another bidder.
     // Pass the MSP ad object; requestId is not needed here.
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {
-        let mspAd = loader.getAd(placementId: placementId)
+    override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
+        val mspAd = loader.getAd(placementId)
 
         // If another bidder wins the in-app auction:
-        MSP.shared.notifyLoss(
-            winnerBidderName: "other_bidder_name",
-            winnerPrice: 1.5,       // winning bid price in USD
-            ad: mspAd,
-            requestId: nil
+        MSP.notifyLoss(
+            winnerBidder = "other_bidder_name",
+            winnerPrice = 1.5f,         // winning bid price in USD
+            requestId = "",
+            ad = mspAd
         )
     }
 
     // Case 2: MSP SDK returned no fill and another bidder wins.
-    // Pass nil for ad and supply the requestId from loadInfo.
-    func onError(msg: String, loadInfo: [String: Any]) {
-        let requestId = loadInfo["request_id"] as? String
+    // Pass null for ad and supply the requestId from loadInfo.
+    override fun onError(msg: String, loadInfo: Map<String, Any>) {
+        val requestId = loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID] as? String ?: ""
 
-        MSP.shared.notifyLoss(
-            winnerBidderName: "other_bidder_name",
-            winnerPrice: 1.5,       // winning bid price in USD
-            ad: nil,
-            requestId: requestId
+        MSP.notifyLoss(
+            winnerBidder = "other_bidder_name",
+            winnerPrice = 1.5f,         // winning bid price in USD
+            requestId = requestId,
+            ad = null
         )
     }
 }
 ```
+
 ---
 
 ## Ad Formats
 
 ### Banner Ads
 
-```swift
-import MSPCore
-import MSPiOSCore
+```kotlin
+import android.view.View
+import com.particles.msp.api.AdFormat
+import com.particles.msp.api.AdListener
+import com.particles.msp.api.AdLoader
+import com.particles.msp.api.AdRequest
+import com.particles.msp.api.AdSize
+import com.particles.msp.api.BannerAdView
+import com.particles.msp.api.MSPAd
 
-class BannerViewController: UIViewController {
+class BannerActivity : AppCompatActivity() {
 
-    private let loader = MSPAdLoader()
-    private var bannerContainerView: UIView?
+    private val loader = AdLoader()
 
-    private func loadBanner() {
-        let size = AdSize(width: 320, height: 50)
-        let request = AdRequest(
-            customParams: [:],
-            geo: nil,
-            context: nil,
-            adaptiveBannerSize: nil,
-            adSize: size,
-            placementId: "YOUR_BANNER_PLACEMENT_ID",
-            adFormat: .banner
-        )
-        loader.loadAd(placementId: "YOUR_BANNER_PLACEMENT_ID", adListener: self, adRequest: request)
-    }
-}
-
-extension BannerViewController: AdListener {
-
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {
-        guard let bannerAd = loader.getAd(placementId: placementId) as? BannerAd else { return }
-
-        let adView = bannerAd.adView
-        adView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(adView)
-
-        NSLayoutConstraint.activate([
-            adView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            adView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            adView.widthAnchor.constraint(equalToConstant: 320),
-            adView.heightAnchor.constraint(equalToConstant: 50),
-        ])
+    private fun loadBanner() {
+        val request = AdRequest.Builder(AdFormat.BANNER)
+            .setContext(this)
+            .setPlacement("YOUR_BANNER_PLACEMENT_ID")
+            .setAdSize(AdSize(width = 320, height = 50, isInlineAdaptiveBanner = false, isAnchorAdaptiveBanner = false))
+            .build()
+        loader.loadAd("YOUR_BANNER_PLACEMENT_ID", adListener, request)
     }
 
-    func onError(msg: String, loadInfo: [String: Any]) {
-        print("[MSP] Banner error: \(msg)")
+    private val adListener = object : AdListener {
+
+        override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
+            val bannerAd = loader.getAd(placementId) as? BannerAdView ?: return
+            val adView = bannerAd.adView as View
+
+            runOnUiThread {
+                // Attach the ad view to your layout
+                val container = findViewById<FrameLayout>(R.id.banner_container)
+                container.removeAllViews()
+                container.addView(adView)
+            }
+        }
+
+        override fun onError(msg: String, loadInfo: Map<String, Any>) {
+            Log.e("MSP", "Banner error: $msg")
+        }
+
+        override fun onAdImpression(ad: MSPAd) {}
+        override fun onAdClicked(ad: MSPAd) {}
+        override fun onAdDismissed(ad: MSPAd) {}
     }
-
-    func onAdImpression(ad: MSPAd) {}
-    func onAdClick(ad: MSPAd) {}
-    func onAdDismissed(ad: MSPAd) {}
-
-    func getRootViewController() -> UIViewController? { self }
 }
 ```
 
@@ -277,55 +279,54 @@ extension BannerViewController: AdListener {
 
 Load the interstitial before you need to show it. Display it at a natural transition point — level completion, article end, etc.
 
-```swift
-import MSPCore
-import MSPiOSCore
+```kotlin
+import android.app.Activity
+import com.particles.msp.api.AdFormat
+import com.particles.msp.api.AdListener
+import com.particles.msp.api.AdLoader
+import com.particles.msp.api.AdRequest
+import com.particles.msp.api.InterstitialAd
+import com.particles.msp.api.MSPAd
 
-class InterstitialViewController: UIViewController {
+class InterstitialActivity : AppCompatActivity() {
 
-    private let loader = MSPAdLoader()
+    private val loader = AdLoader()
 
-    private func loadInterstitial() {
-        let request = AdRequest(
-            customParams: [:],
-            geo: nil,
-            context: nil,
-            adaptiveBannerSize: nil,
-            adSize: nil,
-            placementId: "YOUR_INTERSTITIAL_PLACEMENT_ID",
-            adFormat: .interstitial
-        )
-        loader.loadAd(placementId: "YOUR_INTERSTITIAL_PLACEMENT_ID", adListener: self, adRequest: request)
+    private fun loadInterstitial() {
+        val request = AdRequest.Builder(AdFormat.INTERSTITIAL)
+            .setContext(this)
+            .setPlacement("YOUR_INTERSTITIAL_PLACEMENT_ID")
+            .build()
+        loader.loadAd("YOUR_INTERSTITIAL_PLACEMENT_ID", adListener, request)
     }
 
-    private func showInterstitialIfReady() {
-        guard let interstitialAd = loader.getAd(placementId: "YOUR_INTERSTITIAL_PLACEMENT_ID") as? InterstitialAd else {
+    private fun showInterstitialIfReady() {
+        val interstitialAd = loader.getAd("YOUR_INTERSTITIAL_PLACEMENT_ID") as? InterstitialAd
+        if (interstitialAd == null) {
             loadInterstitial() // not ready yet — start loading
             return
         }
-        interstitialAd.show(rootViewController: self)
-    }
-}
-
-extension InterstitialViewController: AdListener {
-
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {
-        print("[MSP] Interstitial ready")
-        showInterstitialIfReady()
+        interstitialAd.show(this)
     }
 
-    func onError(msg: String, loadInfo: [String: Any]) {
-        print("[MSP] Interstitial error: \(msg)")
+    private val adListener = object : AdListener {
+
+        override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
+            Log.d("MSP", "Interstitial ready")
+            showInterstitialIfReady()
+        }
+
+        override fun onError(msg: String, loadInfo: Map<String, Any>) {
+            Log.e("MSP", "Interstitial error: $msg")
+        }
+
+        override fun onAdDismissed(ad: MSPAd) {
+            Log.d("MSP", "Interstitial dismissed")
+        }
+
+        override fun onAdImpression(ad: MSPAd) {}
+        override fun onAdClicked(ad: MSPAd) {}
     }
-
-    func onAdDismissed(ad: MSPAd) {
-        print("[MSP] Interstitial Ads is dismissed: \(msg)")
-    }
-
-    func onAdImpression(ad: MSPAd) {}
-    func onAdClick(ad: MSPAd) {}
-
-    func getRootViewController() -> UIViewController? { self }
 }
 ```
 
@@ -333,241 +334,276 @@ extension InterstitialViewController: AdListener {
 
 Rewarded ads are full-screen placements that grant a reward — coins, lives, premium content access — after the user completes the ad experience. The reward is delivered via `onAdRewardReceived`.
 
-```swift
-import MSPCore
-import MSPiOSCore
+```kotlin
+import com.particles.msp.api.AdFormat
+import com.particles.msp.api.AdListener
+import com.particles.msp.api.AdLoader
+import com.particles.msp.api.AdRequest
+import com.particles.msp.api.MSPAd
+import com.particles.msp.api.RewardedAd
 
-class RewardedViewController: UIViewController {
+class RewardedActivity : AppCompatActivity() {
 
-    private let loader = MSPAdLoader()
+    private val loader = AdLoader()
 
-    private func loadRewardedAd() {
-        let request = AdRequest(
-            customParams: [:],
-            geo: nil,
-            context: nil,
-            adaptiveBannerSize: nil,
-            adSize: nil,
-            placementId: "YOUR_REWARDED_PLACEMENT_ID",
-            adFormat: .rewarded
-        )
-        loader.loadAd(placementId: "YOUR_REWARDED_PLACEMENT_ID", adListener: self, adRequest: request)
+    private fun loadRewardedAd() {
+        val request = AdRequest.Builder(AdFormat.REWARDED)
+            .setContext(this)
+            .setPlacement("YOUR_REWARDED_PLACEMENT_ID")
+            .build()
+        loader.loadAd("YOUR_REWARDED_PLACEMENT_ID", adListener, request)
     }
 
-    @IBAction func userTappedWatchAd(_ sender: UIButton) {
-        guard let rewardedAd = loader.getAd(placementId: "YOUR_REWARDED_PLACEMENT_ID") as? RewardedAd else {
-            print("[MSP] Rewarded ad not ready yet")
+    fun onUserTappedWatchAd() {
+        val rewardedAd = loader.getAd("YOUR_REWARDED_PLACEMENT_ID") as? RewardedAd
+        if (rewardedAd == null) {
+            Log.d("MSP", "Rewarded ad not ready yet")
             return
         }
-        rewardedAd.show(rootViewController: self)
-    }
-}
-
-extension RewardedViewController: AdListener {
-
-    // Override this to grant the reward to the user
-    func onAdRewardReceived(ad: MSPAd) {
-        guard let rewardedAd = ad as? RewardedAd else { return }
-        let reward = rewardedAd.reward
-        print("[MSP] Reward: \(reward.amount) \(reward.type)")
-        // Grant the reward to the user here
+        rewardedAd.show(this)
     }
 
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {}
-    func onError(msg: String, loadInfo: [String: Any]) {}
-    func onAdDismissed(ad: MSPAd) {}
-    func onAdImpression(ad: MSPAd) {}
-    func onAdClick(ad: MSPAd) {}
+    private val adListener = object : AdListener {
 
-    func getRootViewController() -> UIViewController? { self }
+        // Override this to grant the reward to the user
+        override fun onAdRewardReceived(ad: MSPAd) {
+            val rewardType = ad.adInfo["ad_reward_type"]
+            val rewardAmount = ad.adInfo["ad_reward_amount"]
+            Log.d("MSP", "Reward: $rewardAmount $rewardType")
+            // Grant the reward to the user here
+        }
+
+        override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {}
+        override fun onError(msg: String, loadInfo: Map<String, Any>) {}
+        override fun onAdDismissed(ad: MSPAd) {}
+        override fun onAdImpression(ad: MSPAd) {}
+        override fun onAdClicked(ad: MSPAd) {}
+    }
 }
 ```
 
 ### Native Ads
 
-Native ads return a `NativeAd` object you render with your own layout. Implement `MSPNativeAdContainer` to wire up your UI elements, then pass it to `NativeAdView`.
+Native ads return a `NativeAd` object you render with your own layout. Use `NativeAdViewBinder` to map your XML layout view IDs to the SDK, then pass it to `NativeAdView`.
 
-```swift
-import MSPCore
-import MSPiOSCore
+**1. Define your native ad layout** (`res/layout/native_ad.xml`):
 
-class NativeViewController: UIViewController {
+```xml
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
 
-    private let loader = MSPAdLoader()
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="8dp">
 
-    private func loadNativeAd() {
-        let request = AdRequest(
-            customParams: [:],
-            geo: nil,
-            context: nil,
-            adaptiveBannerSize: nil,
-            adSize: nil,
-            placementId: "YOUR_NATIVE_PLACEMENT_ID",
-            adFormat: .native
-        )
-        loader.loadAd(placementId: "YOUR_NATIVE_PLACEMENT_ID", adListener: self, adRequest: request)
-    }
-}
+        <ImageView
+            android:id="@+id/icon_image_view"
+            android:layout_width="40dp"
+            android:layout_height="40dp" />
 
-extension NativeViewController: AdListener {
+        <TextView
+            android:id="@+id/ad_title_text_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textStyle="bold" />
 
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {
-        guard let nativeAd = loader.getAd(placementId: placementId) as? NativeAd else { return }
-        DispatchQueue.main.async {
-            let container = MyNativeAdContainer(frame: CGRect(x: 0, y: 0, width: 300, height: 250))
-            let nativeAdView = NativeAdView(nativeAd: nativeAd, nativeAdContainer: container)
-            nativeAdView.translatesAutoresizingMaskIntoConstraints = false
-            self.view.addSubview(nativeAdView)
-            NSLayoutConstraint.activate([
-                nativeAdView.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
-                nativeAdView.centerYAnchor.constraint(equalTo: self.view.centerYAnchor),
-                nativeAdView.widthAnchor.constraint(equalToConstant: 300),
-            ])
-        }
-    }
+        <TextView
+            android:id="@+id/advertiser_text_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
 
-    func onError(msg: String, loadInfo: [String: Any]) {}
-    func onAdImpression(ad: MSPAd) {}
-    func onAdClick(ad: MSPAd) {}
-    func onAdDismissed(ad: MSPAd) {}
+        <TextView
+            android:id="@+id/ad_body_text_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
 
-    func getRootViewController() -> UIViewController? { self }
-}
+        <FrameLayout
+            android:id="@+id/ad_media_view_container"
+            android:layout_width="match_parent"
+            android:layout_height="200dp" />
+
+        <FrameLayout
+            android:id="@+id/options_view"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:id="@+id/cta_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+    </LinearLayout>
+</FrameLayout>
 ```
 
-Implement `MSPNativeAdContainer` to provide the UI elements the SDK will populate:
+**2. Load and render the native ad**:
 
-```swift
-class MyNativeAdContainer: UIView, MSPNativeAdContainer {
-    private let titleLabel = UILabel()
-    private let bodyLabel = UILabel()
-    private let advertiserLabel = UILabel()
-    private let ctaButton = UIButton()
-    private let mediaView = UIView()
-    private let iconView = UIImageView()
+```kotlin
+import com.particles.msp.api.AdFormat
+import com.particles.msp.api.AdListener
+import com.particles.msp.api.AdLoader
+import com.particles.msp.api.AdRequest
+import com.particles.msp.api.MSPAd
+import com.particles.msp.api.NativeAd
+import com.particles.msp.api.NativeAdView
+import com.particles.msp.api.NativeAdViewBinder
 
-    func getTitle() -> UILabel? { titleLabel }
-    func getbody() -> UILabel? { bodyLabel }
-    func getAdvertiser() -> UILabel? { advertiserLabel }
-    func getCallToAction() -> UIButton? { ctaButton }
-    func getMedia() -> UIView? { mediaView }
-    func getIcon() -> UIImageView? { iconView }
-    func getCustomClickableViews() -> [UIView]? { nil }
+class NativeActivity : AppCompatActivity() {
+
+    private val loader = AdLoader()
+
+    private fun loadNativeAd() {
+        val request = AdRequest.Builder(AdFormat.NATIVE)
+            .setContext(this)
+            .setPlacement("YOUR_NATIVE_PLACEMENT_ID")
+            .build()
+        loader.loadAd("YOUR_NATIVE_PLACEMENT_ID", adListener, request)
+    }
+
+    private val adListener = object : AdListener {
+
+        override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
+            val nativeAd = loader.getAd(placementId) as? NativeAd ?: return
+
+            val binder = NativeAdViewBinder.Builder()
+                .layoutResourceId(R.layout.native_ad)
+                .titleTextViewId(R.id.ad_title_text_view)
+                .advertiserTextViewId(R.id.advertiser_text_view)
+                .bodyTextViewId(R.id.ad_body_text_view)
+                .callToActionViewId(R.id.cta_button)
+                .mediaViewId(R.id.ad_media_view_container)
+                .optionsViewId(R.id.options_view)
+                .iconViewId(R.id.icon_image_view)
+                .build()
+
+            runOnUiThread {
+                val nativeAdView = NativeAdView(nativeAd, binder, this@NativeActivity)
+                val container = findViewById<FrameLayout>(R.id.ad_container)
+                container.removeAllViews()
+                container.addView(nativeAdView)
+            }
+        }
+
+        override fun onError(msg: String, loadInfo: Map<String, Any>) {}
+        override fun onAdImpression(ad: MSPAd) {}
+        override fun onAdClicked(ad: MSPAd) {}
+        override fun onAdDismissed(ad: MSPAd) {}
+    }
 }
 ```
 
 ### Native-Banner Multi-format
 
-`.multi_format` allows both native and banner ads to fill the same placement. In `onAdLoaded`, check which type was returned and render accordingly.
+`AdFormat.MULTI_FORMAT` allows both native and banner ads to fill the same placement. In `onAdLoaded`, check which type was returned and render accordingly.
 
-```swift
-import MSPCore
-import MSPiOSCore
+```kotlin
+import android.view.View
+import com.particles.msp.api.AdFormat
+import com.particles.msp.api.AdListener
+import com.particles.msp.api.AdLoader
+import com.particles.msp.api.AdRequest
+import com.particles.msp.api.AdSize
+import com.particles.msp.api.BannerAdView
+import com.particles.msp.api.MSPAd
+import com.particles.msp.api.NativeAd
+import com.particles.msp.api.NativeAdView
+import com.particles.msp.api.NativeAdViewBinder
 
-class MultiFormatViewController: UIViewController {
+class MultiFormatActivity : AppCompatActivity() {
 
-    private let loader = MSPAdLoader()
+    private val loader = AdLoader()
 
-    private func loadAd() {
-        let request = AdRequest(
-            customParams: [:],
-            geo: nil,
-            context: nil,
-            adaptiveBannerSize: nil,
-            adSize: nil,
-            placementId: "YOUR_MULTI_FORMAT_PLACEMENT_ID",
-            adFormat: .multi_format
-        )
-        loader.loadAd(placementId: "YOUR_MULTI_FORMAT_PLACEMENT_ID", adListener: self, adRequest: request)
+    private fun loadAd() {
+        val request = AdRequest.Builder(AdFormat.MULTI_FORMAT)
+            .setContext(this)
+            .setPlacement("YOUR_MULTI_FORMAT_PLACEMENT_ID")
+            .setAdSize(AdSize(300, 250, false, false))
+            .build()
+        loader.loadAd("YOUR_MULTI_FORMAT_PLACEMENT_ID", adListener, request)
     }
-}
 
-extension MultiFormatViewController: AdListener {
+    private val adListener = object : AdListener {
 
-    func onAdLoaded(placementId: String, loadInfo: [String: Any]) {
-        let ad = loader.getAd(placementId: placementId)
-        DispatchQueue.main.async {
-            if let nativeAd = ad as? NativeAd {
-                let container = MyNativeAdContainer(frame: CGRect(x: 0, y: 0, width: 300, height: 250))
-                let nativeAdView = NativeAdView(nativeAd: nativeAd, nativeAdContainer: container)
-                nativeAdView.translatesAutoresizingMaskIntoConstraints = false
-                self.view.addSubview(nativeAdView)
-                NSLayoutConstraint.activate([
-                    nativeAdView.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
-                    nativeAdView.centerYAnchor.constraint(equalTo: self.view.centerYAnchor),
-                    nativeAdView.widthAnchor.constraint(equalToConstant: 300),
-                ])
-            } else if let bannerAd = ad as? BannerAd {
-                let adView = bannerAd.adView
-                adView.translatesAutoresizingMaskIntoConstraints = false
-                self.view.addSubview(adView)
-                NSLayoutConstraint.activate([
-                    adView.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
-                    adView.centerYAnchor.constraint(equalTo: self.view.centerYAnchor),
-                    adView.widthAnchor.constraint(equalToConstant: 320),
-                    adView.heightAnchor.constraint(equalToConstant: 50),
-                ])
+        override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
+            val ad = loader.getAd(placementId)
+
+            runOnUiThread {
+                val container = findViewById<FrameLayout>(R.id.ad_container)
+                container.removeAllViews()
+
+                when (ad) {
+                    is NativeAd -> {
+                        val binder = NativeAdViewBinder.Builder()
+                            .layoutResourceId(R.layout.native_ad)
+                            .titleTextViewId(R.id.ad_title_text_view)
+                            .advertiserTextViewId(R.id.advertiser_text_view)
+                            .bodyTextViewId(R.id.ad_body_text_view)
+                            .callToActionViewId(R.id.cta_button)
+                            .mediaViewId(R.id.ad_media_view_container)
+                            .optionsViewId(R.id.options_view)
+                            .iconViewId(R.id.icon_image_view)
+                            .build()
+                        container.addView(NativeAdView(ad, binder, this@MultiFormatActivity))
+                    }
+                    is BannerAdView -> {
+                        container.addView(ad.adView as View)
+                    }
+                }
             }
         }
+
+        override fun onError(msg: String, loadInfo: Map<String, Any>) {}
+        override fun onAdImpression(ad: MSPAd) {}
+        override fun onAdClicked(ad: MSPAd) {}
+        override fun onAdDismissed(ad: MSPAd) {}
     }
-
-    func onError(msg: String, loadInfo: [String: Any]) {}
-    func onAdImpression(ad: MSPAd) {}
-    func onAdClick(ad: MSPAd) {}
-    func onAdDismissed(ad: MSPAd) {}
-
-    func getRootViewController() -> UIViewController? { self }
 }
 ```
 
+---
+
 ## Mediation Networks Guide
 
-Network-specific `Info.plist` entries required for each adapter are listed below.
-
-| Pod | Ad Network | Formats |
+| Dependency | Ad Network | Formats |
 |---|---|---|
-| `MSPGoogleAdapter` | Google Ad Manager / AdMob | Banner, Interstitial, Rewarded, Native |
-| `MSPFacebookAdapter` | Meta Audience Network | Banner, Interstitial, Rewarded, Native |
-| `MSPNovaAdapter` | Nova | Banner, Interstitial, Native |
-| `MSPMolocoAdapter` | Moloco | Banner, Interstitial, Rewarded |
+| `ai.themsp:google-adapter` | Google Ad Manager / AdMob | Banner, Interstitial, Rewarded, Native |
+| `ai.themsp:facebook-adapter` | Meta Audience Network | Banner, Interstitial, Rewarded, Native |
+| `ai.themsp:nova-adapter` | Nova | Banner, Interstitial, Native |
+| `ai.themsp:moloco-adapter` | Moloco | Banner, Interstitial, Rewarded |
 
 ---
 
 ### Google
 
-**Info.plist — GAD identifier**
+Pass your AdMob App ID in the `getParameters()` map during initialization:
 
-Add your app's GAD identifier from the Google AdMob dashboard:
-
-```xml
-<key>GADApplicationIdentifier</key>
-<string>ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX</string>
+```kotlin
+override fun getParameters(): Map<String, Any> = mapOf(
+    MSPConstants.INIT_PARAM_KEY_GOOGLE_APP_ID to "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
+)
 ```
 
-**Info.plist — SKAdNetwork**
+Add the AdMob App ID to `AndroidManifest.xml` as well (required by the Google Mobile Ads SDK):
 
 ```xml
-<dict>
-  <key>SKAdNetworkIdentifier</key>
-  <string>cstr6suwn9.skadnetwork</string>
-</dict>
+<application>
+    <meta-data
+        android:name="com.google.android.gms.ads.APPLICATION_ID"
+        android:value="ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX" />
+</application>
 ```
 
----
+### Moloco
 
-### Meta (Facebook)
+Pass your Moloco App Key in the `getParameters()` map during initialization:
 
-**Info.plist — SKAdNetwork**
-
-```xml
-<dict>
-  <key>SKAdNetworkIdentifier</key>
-  <string>v9wttpbfk9.skadnetwork</string>
-</dict>
-<dict>
-  <key>SKAdNetworkIdentifier</key>
-  <string>n38lu8286q.skadnetwork</string>
-</dict>
+```kotlin
+override fun getParameters(): Map<String, Any> = mapOf(
+    MSPConstants.INIT_PARAM_KEY_MOLOCO_APP_KEY to "YOUR_MOLOCO_APP_KEY"
+)
 ```
 
 ---
@@ -576,9 +612,9 @@ Add your app's GAD identifier from the Google AdMob dashboard:
 
 ### Preloading
 
-The auction takes time. Suggest Call `loadAd` before the moment you need to show the ad:
+The auction takes time. Call `loadAd` before the moment you need to show the ad:
 
-- **Banners**: Load when the view controller loads (`viewDidLoad`).
+- **Banners**: Load when the fragment or activity starts (`onCreate` / `onStart`).
 - **Interstitials**: Load at app launch or immediately after the previous interstitial is dismissed.
 - **Rewarded**: Load at app launch and again in `onAdDismissed`.
 
@@ -586,17 +622,13 @@ The auction takes time. Suggest Call `loadAd` before the moment you need to show
 
 When an ad is no longer needed, call `destroy()` to release adapter resources and prevent memory leaks:
 
-```swift
-override func viewDidDisappear(_ animated: Bool) {
-    super.viewDidDisappear(animated)
+```kotlin
+override fun onDestroy() {
+    super.onDestroy()
     currentAd?.destroy()
-    currentAd = nil
+    currentAd = null
 }
 ```
-
-### Memory Management
-
-Keep a strong reference to your `MSPAdLoader` instance for the lifetime of the placement. The `AdListener` is held weakly by the loader — your view controller or delegate object must remain alive until `onAdLoaded` or `onError` fires.
 
 ---
 
@@ -604,21 +636,30 @@ Keep a strong reference to your `MSPAdLoader` instance for the lifetime of the p
 
 **No ads filling**
 
-- Verify the placement IDs match what is Provisioned by Particles inc.
-- Confirm `initMSP` completes before `loadAd` is called.
-- Enable verbose logging during development: `MSPLogger.shared.setLogLevel(level: MSPLogger.DEBUG)`.
+- Verify the placement IDs match what is provisioned by Particle Inc.
+- Confirm `MSP.init()` completes before `loadAd` is called.
+- Enable verbose logging during development: `Logger.setLogLevel(Logger.VERBOSE)`.
 
-**`onAdLoaded` fires but `getAd` returns nil**
+**`onAdLoaded` fires but `getAd` returns null**
 
 `getAd` removes the ad from cache. Call it exactly once per load cycle and hold the returned ad strongly until you are done with it.
 
-**ATT prompt not appearing**
+**Interstitial or rewarded ad not showing**
 
-`ATTrackingManager.requestTrackingAuthorization` must be called from the main thread after your root view controller is visible. The 1-second delay in the sample above handles the most common case; adjust as needed for your presentation flow.
+`show(activity)` must be called with a non-null, non-finishing `Activity`. Ensure the activity is in the foreground when you call `show`.
 
 **Rewarded ad shows but reward is never granted**
 
 `onAdRewardReceived` fires only if the user watches the ad to completion. Do not grant rewards based on `onAdDismissed` alone.
 
+---
+
 ## Privacy & CCPA
-Please follow Prebid's documentation to set user's IAB US Privacy signal: https://docs.prebid.org/prebid-mobile/prebid-mobile-privacy-regulation.html#notice-and-opt-out-signal 
+
+Pass user consent and privacy signals through the `MSPInitializationParameters` implementation:
+
+- `hasUserConsent()` — set to `true` if the user has consented to personalized advertising
+- `isDoNotSell()` — set to `true` if the user has opted out under CCPA
+- `getConsentString()` — provide the IAB TCF consent string if applicable
+
+Please follow Prebid's documentation to set the user's IAB US Privacy signal: https://docs.prebid.org/prebid-mobile/prebid-mobile-privacy-regulation.html#notice-and-opt-out-signal
