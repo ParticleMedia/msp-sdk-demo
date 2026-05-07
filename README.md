@@ -168,51 +168,35 @@ The pattern for every ad format is the same:
 
 ---
 
-## Call NotifyLoss API
+## NotifyLoss API
+Publisher App needs to call NotifyLoss API when it also integrates with other Ad networks besides MSP SDK. About the timing: publisher App should call `MSP.notifyLoss` when the other ad network wins one auction(the auction usually happens shortly before Ad impression).
 
-Call `MSP.notifyLoss` when:
-1. The MSP Ad loses the auction, or
-2. The MSP SDK does not fill while another bidder wins
+API signature and parameters:
 
 `fun notifyLoss(winnerBidder: String, winnerPrice: Float, requestId: String, ad: MSPAd?)`
-
 - `winnerBidder`: Name of the winning bidder other than MSP
 - `winnerPrice`: Ad price of the winning bid other than MSP
 - `requestId`: Provided by `onAdLoaded` and `onError` callback parameter `loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID]`
 - `ad`: MSP Ad that loses the auction. Pass `null` for the no-fill case.
 
 ```kotlin
-class YourActivity : AppCompatActivity(), AdListener {
-
-    // Case 1: MSP ad was loaded but lost the in-app auction to another bidder.
-    // Pass the MSP ad object; requestId is not needed here.
-    override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
-        val mspAd = loader.getAd(placementId)
-
-        // If another bidder wins the in-app auction:
-        MSP.notifyLoss(
+// Case 1: MSP ad filled
+MSP.notifyLoss(
             winnerBidder = "other_bidder_name",
             winnerPrice = 1.5f,         // winning bid price in USD
             requestId = "",
             ad = mspAd
         )
-    }
 
-    // Case 2: MSP SDK returned no fill and another bidder wins.
-    // Pass null for ad and supply the requestId from loadInfo.
-    override fun onError(msg: String, loadInfo: Map<String, Any>) {
-        val requestId = loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID] as? String ?: ""
-
+// Case 2: MSP Ad no-fill
         MSP.notifyLoss(
             winnerBidder = "other_bidder_name",
             winnerPrice = 1.5f,         // winning bid price in USD
             requestId = requestId,
             ad = null
         )
-    }
-}
-```
 
+```
 ---
 
 ## Ad Formats
