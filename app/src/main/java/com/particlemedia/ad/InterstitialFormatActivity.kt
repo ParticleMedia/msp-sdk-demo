@@ -103,13 +103,26 @@ class InterstitialFormatActivity : ComponentActivity() {
     }
 
     fun getTestParams(): Map<String, Any> {
-        val testParams: MutableMap<String, Any> = HashMap()
-        testParams["test_ad"] = true
-        //testParams["ad_network"] = "msp_google"
-        //testParams["ad_network"] = "msp_fb"
-        testParams["ad_network"] = "msp_nova"
-        testParams["is_vertical"] = true
-        testParams["creative_type"] = "video"
-        return testParams
+        val creativeType = "video"
+        val creativeLayout = "vertical"
+        return buildMap {
+            put("test_ad", true)
+            //put("ad_network", "msp_google")
+            //put("ad_network", "msp_fb")
+            put("ad_network", "msp_nova")
+            // debug_item is what the Nova debug/test ad-set filter actually reads server-side;
+            // top-level fields here only land in ext.data.test, which the server ignores.
+            put(MSPConstants.CUSTOM_PARAM_KEY_DEBUG_ITEMS, buildMap {
+                put("debug", true)
+                put("creative_type", creativeType.uppercase())
+                put("layout", creativeLayout)
+                put("exp_parameter", buildMap {
+                    put("h5_template_group", "t1")
+                    put("enable_h5_format", "true")
+                    put("enable_h5_for_playable", "true")
+                    put("preload", "true")
+                })
+            })
+        }
     }
 }
