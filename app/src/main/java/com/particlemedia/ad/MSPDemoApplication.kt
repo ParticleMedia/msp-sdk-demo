@@ -20,11 +20,6 @@ class MSPDemoApplication: Application() {
                 return 1
             }
 
-            override fun getConsentString(): String {
-                // currently returned value is not used
-                return ""
-            }
-
             override fun getOrgId(): Int {
                 // Please replace with your own provisioned org id
                 return 1061
@@ -35,17 +30,7 @@ class MSPDemoApplication: Application() {
                 return mapOf(MSPConstants.INIT_PARAM_KEY_PPID to "shun-test-ppid", MSPConstants.INIT_PARAM_KEY_EMAIL to "shun.j@shun.com")
             }
 
-            override fun hasUserConsent(): Boolean {
-                // currently returned value is not used
-                return true
-            }
-
             override fun isAgeRestrictedUser(): Boolean {
-                // currently returned value is not used
-                return false
-            }
-
-            override fun isDoNotSell(): Boolean {
                 // currently returned value is not used
                 return false
             }
@@ -69,7 +54,7 @@ class MSPDemoApplication: Application() {
             }
         }
 
-        val timeTakenInit = measureTimeMillis { MSP.init(applicationContext, initParams, initListener, false) }
+        val timeTakenInit = measureTimeMillis { MSP.init(applicationContext, initParams, initListener) }
         Logger.info("MSP.init() DURATION: $timeTakenInit ms")
     }
 }
