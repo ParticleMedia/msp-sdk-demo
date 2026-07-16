@@ -47,6 +47,7 @@ dependencies {
     implementation 'ai.themsp:facebook-adapter:$LATEST_VERSION'
     implementation 'ai.themsp:nova-adapter:$LATEST_VERSION'
     implementation 'ai.themsp:moloco-adapter:$LATEST_VERSION'
+    implementation 'ai.themsp:applovin-adapter:$LATEST_VERSION'
 }
 ```
 
@@ -101,17 +102,14 @@ class MyApplication : Application() {
             override fun getOrgId(): Int = 12345       // Your org ID from the MSP dashboard
             override fun getAppId(): Int = 67890       // Your app ID from the MSP dashboard
 
-            // Privacy and consent flags — set values appropriate for your app
-            override fun hasUserConsent(): Boolean = true
             override fun isAgeRestrictedUser(): Boolean = false
-            override fun isDoNotSell(): Boolean = false
-            override fun getConsentString(): String = ""
             override fun isInTestMode(): Boolean = false
 
             // Additional network-specific init parameters
             override fun getParameters(): Map<String, Any> = mapOf(
-                 MSPConstants.INIT_PARAM_KEY_GOOGLE_APP_ID to "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX"
-                 MSPConstants.INIT_PARAM_KEY_MOLOCO_APP_KEY to "xxxxx-v9C8uNYV5riG7Vwu"
+                 MSPConstants.INIT_PARAM_KEY_GOOGLE_APP_ID to "ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX",
+                 MSPConstants.INIT_PARAM_KEY_MOLOCO_APP_KEY to "xxxxx-v9C8uNYV5riG7Vwu",
+                 MSPConstants.INIT_PARAM_KEY_APPLOVIN_SDK_KEY to "6KrA5SQHFTBpGDUU4FeLIZG..."
             )
         }
 
@@ -144,9 +142,6 @@ Register your Application class in `AndroidManifest.xml`:
 | `getPrebidAPIKey()` | `String` | API key issued by Particle Inc. for your app |
 | `getOrgId()` | `Int` | Organization ID provisioned from Particle Inc. |
 | `getAppId()` | `Int` | App ID provisioned from Particle Inc. |
-| `hasUserConsent()` | `Boolean` | Whether the user has given consent for personalized ads |
-| `isDoNotSell()` | `Boolean` | Whether the user has opted out of the sale of personal data (CCPA) |
-| `getConsentString()` | `String` | IAB TCF consent string |
 | `getParameters()` | `Map<String, Any>` | Additional network-specific initialization parameters |
 
 **Optional MSP properties**
@@ -178,40 +173,8 @@ Call `MSP.notifyLoss` when:
 
 - `winnerBidder`: Name of the winning bidder other than MSP
 - `winnerPrice`: Ad price of the winning bid other than MSP
-- `requestId`: Provided by `onAdLoaded` and `onError` callback parameter `loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID]`
+- `requestId`: Provided by `onAdLoaded` and `onError` callback parameter `loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID]` of `LoadAd` API
 - `ad`: MSP Ad that loses the auction. Pass `null` for the no-fill case.
-
-```kotlin
-class YourActivity : AppCompatActivity(), AdListener {
-
-    // Case 1: MSP ad was loaded but lost the in-app auction to another bidder.
-    // Pass the MSP ad object; requestId is not needed here.
-    override fun onAdLoaded(placementId: String, loadInfo: Map<String, Any>) {
-        val mspAd = loader.getAd(placementId)
-
-        // If another bidder wins the in-app auction:
-        MSP.notifyLoss(
-            winnerBidder = "other_bidder_name",
-            winnerPrice = 1.5f,         // winning bid price in USD
-            requestId = "",
-            ad = mspAd
-        )
-    }
-
-    // Case 2: MSP SDK returned no fill and another bidder wins.
-    // Pass null for ad and supply the requestId from loadInfo.
-    override fun onError(msg: String, loadInfo: Map<String, Any>) {
-        val requestId = loadInfo[MSPConstants.LOAD_INFO_KEY_REQUEST_ID] as? String ?: ""
-
-        MSP.notifyLoss(
-            winnerBidder = "other_bidder_name",
-            winnerPrice = 1.5f,         // winning bid price in USD
-            requestId = requestId,
-            ad = null
-        )
-    }
-}
-```
 
 ---
 
@@ -571,8 +534,9 @@ class MultiFormatActivity : AppCompatActivity() {
 |---|---|---|
 | `ai.themsp:google-adapter` | Google Ad Manager / AdMob | Banner, Interstitial, Rewarded, Native |
 | `ai.themsp:facebook-adapter` | Meta Audience Network | Banner, Interstitial, Rewarded, Native |
-| `ai.themsp:nova-adapter` | Nova | Banner, Interstitial, Native |
-| `ai.themsp:moloco-adapter` | Moloco | Banner, Interstitial, Rewarded |
+| `ai.themsp:nova-adapter` | Nova | Banner, Interstitial, Native, Rewarded |
+| `ai.themsp:moloco-adapter` | Moloco | Banner, Native, Interstitial, Rewarded |
+| `ai.themsp:applovin-adapter` | AppLovin/Max | Banner, Native, Interstitial, Rewarded |
 
 ---
 
@@ -603,6 +567,16 @@ Pass your Moloco App Key in the `getParameters()` map during initialization:
 ```kotlin
 override fun getParameters(): Map<String, Any> = mapOf(
     MSPConstants.INIT_PARAM_KEY_MOLOCO_APP_KEY to "YOUR_MOLOCO_APP_KEY"
+)
+```
+
+### AppLovin
+
+Pass your AppLovin SDK Key in the `getParameters()` map during initialization:
+
+```kotlin
+override fun getParameters(): Map<String, Any> = mapOf(
+    MSPConstants.INIT_PARAM_KEY_APPLOVIN_SDK_KEY to "6KrA5SQHFTBpGDUU4FeLIZG..."
 )
 ```
 
@@ -654,12 +628,12 @@ override fun onDestroy() {
 
 ---
 
-## Privacy & CCPA
+## Privacy
+### CCPA
+Prebid SDK which is introduced by by MSP SDK will read `UserDefaults` (iOS) or `SharedPreferences` (Android) key `IABUSPrivacy_String` for US Privacy signal. [Prebid SDK CCPA doc](https://docs.prebid.org/prebid-mobile/prebid-mobile-privacy-regulation.html#notice-and-opt-out-signal)
 
-Pass user consent and privacy signals through the `MSPInitializationParameters` implementation:
+### GDPR
+Prebid SDK which is introduced by by MSP SDK will read `UserDefaults` (iOS) or `SharedPreferences` (Android) keys `IABTCF_gdprApplies` and `IABTCF_TCString` for GDPR privacy signals. [Predbid SDK GDPR doc](https://docs.prebid.org/prebid-mobile/prebid-mobile-privacy-regulation.html#framework-apis)
 
-- `hasUserConsent()` — set to `true` if the user has consented to personalized advertising
-- `isDoNotSell()` — set to `true` if the user has opted out under CCPA
-- `getConsentString()` — provide the IAB TCF consent string if applicable
-
-Please follow Prebid's documentation to set the user's IAB US Privacy signal: https://docs.prebid.org/prebid-mobile/prebid-mobile-privacy-regulation.html#notice-and-opt-out-signal
+### COPPA
+Set your COPPA signal through init parameter `isAgeRestrictedUser`
